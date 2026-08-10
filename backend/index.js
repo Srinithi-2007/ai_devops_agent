@@ -1,10 +1,30 @@
 const express = require("express");
+const pool = require("./db");
 
 const app = express();
 const PORT = 5000;
 
+app.use(express.json());
+
 app.get("/", (req, res) => {
     res.send("Backend is running 🚀");
+});
+
+app.get("/db-test", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT NOW()");
+
+        res.json({
+            message: "CockroachDB connected successfully!",
+            time: result.rows[0]
+        });
+    } catch (error) {
+        console.error("Database connection error:", error);
+
+        res.status(500).json({
+            message: "Database connection failed"
+        });
+    }
 });
 
 app.listen(PORT, () => {
