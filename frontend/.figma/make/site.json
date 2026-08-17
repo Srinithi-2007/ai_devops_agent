@@ -1,0 +1,10 @@
+{
+  "description": "Streamline incident management for DevOps teams with an AI-powered platform that analyzes past incidents, recommends solutions, and enhances operational efficiency.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
