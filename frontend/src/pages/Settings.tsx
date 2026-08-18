@@ -82,6 +82,7 @@ export default function Settings() {
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('dark')
   const [showModal, setShowModal] = useState(false)
   const [region, setRegion] = useState('us-east-1')
+  const [apiBaseUrl, setApiBaseUrl] = useState(() => localStorage.getItem('API_BASE_URL') || 'http://localhost:8000')
 
   const handleClearMemory = () => {
     setShowModal(false)
@@ -132,19 +133,27 @@ export default function Settings() {
         </Section>
 
         <Section title="API Configuration" icon={Key} color="#06b6d4">
-          {[
-            { label: 'API Base URL', placeholder: 'https://api.opsai.internal', value: 'http://localhost:8000' },
-            { label: 'API Key', placeholder: 'ops_key_...', value: 'ops_key_••••••••••••••••' },
-          ].map(({ label, placeholder, value }) => (
-            <Row key={label} label={label}>
-              <input
-                defaultValue={value}
-                placeholder={placeholder}
-                className="px-3 py-2 text-xs rounded-lg outline-none w-64"
-                style={{ background: '#070b16', border: '1px solid rgba(59,130,246,0.2)', color: '#94a3b8' }}
-              />
-            </Row>
-          ))}
+          <Row label="API Base URL">
+            <input
+              value={apiBaseUrl}
+              onChange={e => {
+                const val = e.target.value
+                setApiBaseUrl(val)
+                localStorage.setItem('API_BASE_URL', val)
+              }}
+              placeholder="http://localhost:8000"
+              className="px-3 py-2 text-xs rounded-lg outline-none w-64"
+              style={{ background: '#070b16', border: '1px solid rgba(59,130,246,0.2)', color: '#94a3b8' }}
+            />
+          </Row>
+          <Row label="API Key">
+            <input
+              defaultValue="ops_key_••••••••••••••••"
+              placeholder="ops_key_..."
+              className="px-3 py-2 text-xs rounded-lg outline-none w-64"
+              style={{ background: '#070b16', border: '1px solid rgba(59,130,246,0.2)', color: '#94a3b8' }}
+            />
+          </Row>
           <Row label="Timeout (ms)" sub="Maximum wait for API responses">
             <input
               defaultValue="30000"
