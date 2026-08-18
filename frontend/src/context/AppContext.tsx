@@ -237,20 +237,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [addNotification])
 
   const sendChatMessage = useCallback(async (content: string) => {
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content, timestamp: new Date().toISOString() }
-    const thinkingMsg: ChatMessage = { id: 'thinking', role: 'assistant', content: '', timestamp: new Date().toISOString(), thinking: true }
-    setChatMessages(prev => [...prev, userMsg, thinkingMsg])
-    await new Promise(r => setTimeout(r, 2200))
-    const response = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)]
+  const userMsg: ChatMessage = {
+    id: Date.now().toString(),
+    role: 'user',
+    content,
+    timestamp: new Date().toISOString(),
+  }
+
+  const thinkingMsg: ChatMessage = {
+    id: 'thinking',
+    role: 'assistant',
+    content: '',
+    timestamp: new Date().toISOString(),
+    thinking: true,
+  }
+
+  setChatMessages(prev => [...prev, userMsg, thinkingMsg])
+
+  try {
+    const response = await fetch('http://localhost:5000/ai/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: content,
+        description: content,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'AI analysis failed')
+    }
+
+    const analysis = data.analysis
+
     const assistantMsg: ChatMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: response.content,
+      content:
+        `**AI Analysis Complete**\n\n` +
+        `**Category:** ${analysis.category}\n\n` +
+        `**Severity:** ${analysis.severity}\n\n` +
+        `**Recommendation:** ${analysis.recommendation}`,
       timestamp: new Date().toISOString(),
-      memories: response.memories,
     }
-    setChatMessages(prev => prev.filter(m => m.id !== 'thinking').concat(assistantMsg))
-  }, [])
+
+    setChatMessages(prev =>
+      prev.filter(m => m.id !== 'thinking').concat(assistantMsg)
+    )
+
+  } catch (error) {
+    console.error('AI API error:', error)
+
+    const errorMsg: ChatMessage = {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content:
+        `**AI analysis failed.**\n\n` +
+        `Please make sure the backend is running on port 5000.`,
+      timestamp: new Date().toISOString(),
+    }
+
+    setChatMessages(prev =>
+      prev.filter(m => m.id !== 'thinking').concat(errorMsg)
+    )
+  }
+}, [])
 
   const refreshHealth = useCallback(async () => {
     await new Promise(r => setTimeout(r, 1200))

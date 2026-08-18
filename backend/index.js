@@ -1,10 +1,12 @@
 const express = require("express");
+const cors = require("cors");
 const pool = require("./db");
-
+const { analyzeIncident } = require("./ai/aiService");
 const app = express();
 const PORT = 5000;
 
 app.use(express.json());
+app.use(cors());
 
 app.get("/", (req, res) => {
     res.send("Backend is running 🚀");
@@ -163,6 +165,54 @@ app.delete("/incidents/:id", async (req, res) => {
 
         res.status(500).json({
             message: "Failed to delete incident",
+            error: error.message
+        });
+    }
+});
+// AI - Analyze Incident
+
+    app.post("/ai/analyze", async (req, res) => {
+    try {
+        const { title, description } = req.body;
+
+        if (!title || !description) {
+            return res.status(400).json({
+                message: "Title and description are required"
+            });
+        }
+
+        // AI analysis
+        const analysis = analyzeIncident(title, description);
+
+        // Save AI analysis to CockroachDB
+        const result = await pool.query(
+            `INSERT INTO incidents
+             (title, description, severity, service, status,
+              ai_category, ai_recommendation, ai_analyzed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+             RETURNING *`,
+            [
+                title,
+                description,
+                analysis.severity,
+                analysis.category,
+                "open",
+                analysis.category,
+                analysis.recommendation
+            ]
+        );
+
+        res.json({
+            message: "Incident analyzed and saved successfully",
+            analysis: analysis,
+            incident: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error("AI analysis error:", error);
+
+        res.status(500).json({
+            message: "AI analysis failed",
             error: error.message
         });
     }
