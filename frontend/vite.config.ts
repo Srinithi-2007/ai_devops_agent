@@ -29,16 +29,25 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
-    server: {
-      host: '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
-      strictPort: true,
-      watch: { ignored: ['**/.figma/**'] },
+   server: {
+  host: '0.0.0.0',
+  port: parseInt(process.env.PORT || '8443'),
+  strictPort: true,
+
+  proxy: {
+    '/api': {
+      target: 'http://localhost:5000',
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api/, ''),
     },
-    preview: {
-      host: '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
-    },
+  },
+
+  watch: { ignored: ['**/.figma/**'] },
+},
+preview: {
+    host: '0.0.0.0',
+    port: parseInt(process.env.PORT || '8443'),
+  },
   }
 })
 

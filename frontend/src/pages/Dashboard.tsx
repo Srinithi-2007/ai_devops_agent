@@ -38,7 +38,7 @@ function StatusBadge({ s }: { s: string }) {
 }
 
 export default function Dashboard() {
-  const { incidents, dashboardStats, analyzeIncident, analyzing, addNotification } = useApp()
+  const { incidents, dashboardStats, analyzeIncident, analyzing, addNotification, refreshIncidents } = useApp()
   const navigate = useNavigate()
 
   return (
@@ -73,7 +73,10 @@ export default function Dashboard() {
                 <ArrowRight size={14} />
               </button>
               <button
-                onClick={() => addNotification('success', 'Dashboard refreshed successfully')}
+                onClick={() => {
+                  refreshIncidents()
+                  addNotification('success', 'Dashboard refreshed successfully')
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all hover:bg-white/5"
                 style={{ border: '1px solid rgba(59,130,246,0.2)', color: '#94a3b8' }}
               >

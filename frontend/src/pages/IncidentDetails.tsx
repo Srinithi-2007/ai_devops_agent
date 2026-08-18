@@ -29,7 +29,7 @@ export default function IncidentDetails() {
     if (!id) return
     const fetchSimilar = async () => {
       try {
-        const url = localStorage.getItem('API_BASE_URL') || 'http://localhost:8000'
+        const url = localStorage.getItem('API_BASE_URL') || 'http://localhost:5000'
         const res = await fetch(`${url}/similar/${id}`)
         if (!res.ok) throw new Error('Failed to fetch similar incidents')
         const data = await res.json()
@@ -51,7 +51,7 @@ export default function IncidentDetails() {
   const handleFeedback = async (useful: boolean) => {
     if (!id) return
     try {
-      const url = localStorage.getItem('API_BASE_URL') || 'http://localhost:8000'
+      const url = localStorage.getItem('API_BASE_URL') || 'http://localhost:5000'
       const res = await fetch(`${url}/feedback/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
