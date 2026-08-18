@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+
 export interface Incident {
   id: string
   service: string
@@ -177,46 +178,22 @@ const MOCK_RESPONSES = [
   },
 ]
 
+const getApiUrl = () => localStorage.getItem('API_BASE_URL') || 'http://localhost:8000';
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [incidents, setIncidents] = useState<Incident[]>(MOCK_INCIDENTS)
-  const [loading] = useState(false)
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
-  useEffect(() => {
-  const loadIncidents = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/incidents')
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch incidents')
-      }
-
-      const data = await response.json()
-      setIncidents(data)
-    } catch (error) {
-      console.error('Failed to load incidents:', error)
-    }
-  }
-
-  loadIncidents()
-}, [])
   const [healthServices, setHealthServices] = useState<HealthService[]>(MOCK_HEALTH)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "I'm the AI Operations Agent with access to **847 stored incidents** in CockroachDB memory. I can analyze errors, retrieve similar past incidents, and recommend fixes. What would you like to investigate?",
+      content: "I'm the AI Operations Agent with access to persistent incident memory in CockroachDB. I can analyze errors, retrieve similar past incidents, and recommend fixes. What would you like to investigate?",
       timestamp: new Date().toISOString(),
     },
   ])
   const [notifications, setNotifications] = useState<AppState['notifications']>([])
-
-  const dashboardStats = {
-    total: incidents.length,
-    resolvedByAI: incidents.filter(i => i.status === 'resolved').length,
-    memoryStored: 847,
-    avgConfidence: Math.round(incidents.reduce((s, i) => s + i.confidence, 0) / incidents.length),
-    systemHealth: 98,
-  }
 
   const addNotification = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     const id = Math.random().toString(36).slice(2)
@@ -228,129 +205,161 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications(n => n.filter(x => x.id !== id))
   }, [])
 
+  const fetchIncidents = useCallback(async () => {
+    setLoading(true)
+    try {
+      const url = getApiUrl()
+      const res = await fetch(`${url}/incidents`)
+      if (!res.ok) throw new Error('Failed to fetch incidents')
+      const data = await res.json()
+      
+      const mapped = data.map((apiInc: any): Incident => ({
+        id: apiInc.id,
+        service: apiInc.service,
+        severity: apiInc.severity || 'medium',
+        error: apiInc.error,
+        summary: apiInc.root_cause || 'No summary available.',
+        rootCause: apiInc.root_cause || 'No root cause determined.',
+        recommendation: apiInc.fix || 'No fix recommended.',
+        confidence: apiInc.confidence || 50,
+        status: apiInc.times_seen > 1 ? 'resolved' : 'open',
+        createdAt: apiInc.created_at || new Date().toISOString(),
+      }))
+      setIncidents(mapped)
+    } catch (err: any) {
+      console.error(err)
+      addNotification('error', `Failed to load incidents from backend: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [addNotification])
+
+  useEffect(() => {
+    fetchIncidents()
+  }, [fetchIncidents])
+
+  const dashboardStats = {
+    total: incidents.length,
+    resolvedByAI: incidents.filter(i => i.status === 'resolved').length,
+    memoryStored: incidents.length,
+    avgConfidence: incidents.length ? Math.round(incidents.reduce((s, i) => s + i.confidence, 0) / incidents.length) : 0,
+    systemHealth: 98,
+  }
+
   const analyzeIncident = useCallback(async () => {
-  try {
     setAnalyzing(true)
-
-    addNotification('info', 'Sending incident to backend for AI analysis...')
-
-    const response = await fetch('http://localhost:5000/ai/analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: 'Database connection failed',
-        description: 'Production database is not responding',
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error('AI analysis request failed')
+    addNotification('info', 'Sending incident to backend for analysis...')
+    try {
+      const url = getApiUrl()
+      const services = ['inventory-service', 'checkout-service', 'recommendation-engine']
+      const service = services[Math.floor(Math.random() * services.length)]
+      const payload = {
+        service,
+        error: 'SocketTimeoutException: Read timed out after 5000ms connecting to downstream service',
+        severity: 'high'
+      }
+      
+      const res = await fetch(`${url}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      if (!res.ok) throw new Error('Analysis request failed')
+      const result = await res.json()
+      
+      addNotification('success', `Analysis complete — stored in memory with ${result.confidence}% confidence`)
+      await fetchIncidents()
+    } catch (err: any) {
+      console.error(err)
+      addNotification('error', `Failed to analyze incident: ${err.message}`)
+    } finally {
+      setAnalyzing(false)
     }
+  }, [addNotification, fetchIncidents])
 
-    const data = await response.json()
-
-    if (data.incident) {
-      setIncidents(prev => [data.incident, ...prev])
-    }
-
-    addNotification(
-      'success',
-      `Analysis complete — ${data.incident?.id ?? 'Incident'} saved to CockroachDB`
-    )
-  } catch (error) {
-    console.error('AI analysis error:', error)
-
-    addNotification(
-      'error',
-      'AI analysis failed. Please check the backend.'
-    )
-  } finally {
-    setAnalyzing(false)
-  }
-}, [addNotification])
   const sendChatMessage = useCallback(async (content: string) => {
-  const userMsg: ChatMessage = {
-    id: Date.now().toString(),
-    role: 'user',
-    content,
-    timestamp: new Date().toISOString(),
-  }
-
-  const thinkingMsg: ChatMessage = {
-    id: 'thinking',
-    role: 'assistant',
-    content: '',
-    timestamp: new Date().toISOString(),
-    thinking: true,
-  }
-
-  setChatMessages(prev => [...prev, userMsg, thinkingMsg])
-
-  try {
-    const response = await fetch('http://localhost:5000/ai/analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: content,
-        description: content,
-      }),
-    })
-
-
+    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content, timestamp: new Date().toISOString() }
+    const thinkingMsg: ChatMessage = { id: 'thinking', role: 'assistant', content: '', timestamp: new Date().toISOString(), thinking: true }
+    setChatMessages(prev => [...prev, userMsg, thinkingMsg])
     
-    if (!response.ok) {
-      throw new Error(data.error || 'AI analysis failed')
+    try {
+      const url = getApiUrl()
+      const res = await fetch(`${url}/search?q=${encodeURIComponent(content)}`)
+      if (!res.ok) throw new Error('Search failed')
+      const matches = await res.json()
+      
+      let reply = ""
+      let memories: SimilarIncident[] = []
+      
+      if (matches.length > 0) {
+        reply = `Based on memory retrieval across **stored incidents**, I've found **${matches.length} matching incident(s)**. Here is what I recommend:`
+        memories = matches.slice(0, 3).map((m: any) => ({
+          id: m.id,
+          service: m.service,
+          error: m.error,
+          similarity: Math.round(m.confidence || 80),
+          resolvedAt: m.created_at
+        }))
+        
+        reply += `\n\n**Recommended Fix (from ${matches[0].id}):**\n${matches[0].fix || 'No fix recorded.'}`
+      } else {
+        reply = "I scanned the database memory but couldn't find any exact matches for your query. Try searching for other terms like 'timeout', 'connection', or 'JWT'."
+      }
+      
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: reply,
+        timestamp: new Date().toISOString(),
+        memories
+      }
+      setChatMessages(prev => prev.filter(m => m.id !== 'thinking').concat(assistantMsg))
+    } catch (err: any) {
+      console.error(err)
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Error communicating with AI operations backend: ${err.message}`,
+        timestamp: new Date().toISOString()
+      }
+      setChatMessages(prev => prev.filter(m => m.id !== 'thinking').concat(assistantMsg))
     }
-
-    const analysis = data.analysis
-
-    const assistantMsg: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content:
-        `**AI Analysis Complete**\n\n` +
-        `**Category:** ${analysis.category}\n\n` +
-        `**Severity:** ${analysis.severity}\n\n` +
-        `**Recommendation:** ${analysis.recommendation}`,
-      timestamp: new Date().toISOString(),
-    }
-
-    setChatMessages(prev =>
-      prev.filter(m => m.id !== 'thinking').concat(assistantMsg)
-    )
-
-  } catch (error) {
-    console.error('AI API error:', error)
-
-    const errorMsg: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content:
-        `**AI analysis failed.**\n\n` +
-        `Please make sure the backend is running on port 5000.`,
-      timestamp: new Date().toISOString(),
-    }
-
-    setChatMessages(prev =>
-      prev.filter(m => m.id !== 'thinking').concat(errorMsg)
-    )
-  }
-}, [])
+  }, [])
 
   const refreshHealth = useCallback(async () => {
-    await new Promise(r => setTimeout(r, 1200))
-    setHealthServices(prev =>
-      prev.map(s => ({
-        ...s,
-        latency: s.status === 'online' ? s.latency + Math.floor(Math.random() * 10 - 5) : s.latency,
-        lastChecked: new Date().toISOString(),
-      }))
-    )
-    addNotification('success', 'Health check complete — all systems nominal')
+    try {
+      const url = getApiUrl()
+      const start = Date.now()
+      const res = await fetch(`${url}/ping`)
+      const latency = Date.now() - start
+      
+      setHealthServices(prev =>
+        prev.map(s => {
+          if (s.name === 'Backend API') {
+            return {
+              ...s,
+              status: res.ok ? 'online' : 'offline',
+              latency: latency,
+              lastChecked: new Date().toISOString()
+            }
+          }
+          return {
+            ...s,
+            lastChecked: new Date().toISOString()
+          }
+        })
+      )
+      if (res.ok) {
+        addNotification('success', `Health check complete — backend API online (${latency}ms)`)
+      } else {
+        addNotification('error', 'Backend API health check failed')
+      }
+    } catch (err: any) {
+      setHealthServices(prev =>
+        prev.map(s => s.name === 'Backend API' ? { ...s, status: 'offline', lastChecked: new Date().toISOString() } : s)
+      )
+      addNotification('error', `Backend API unreachable: ${err.message}`)
+    }
   }, [addNotification])
 
   return (

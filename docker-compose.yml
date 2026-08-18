@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai_devops_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_devops_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema_setup.sql:/docker-entrypoint-initdb.d/schema_setup.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-network
+
+  # Node.js Backend (optional - can run locally)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_devops_backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ai_devops_agent
+      NODE_ENV: development
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm install && node index.js
+    networks:
+      - ai-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ai-network:
+    driver: bridge

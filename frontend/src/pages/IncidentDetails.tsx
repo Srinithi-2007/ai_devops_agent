@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Brain, ThumbsUp, ThumbsDown, RefreshCw, Download, Terminal, Lightbulb, Search, GitBranch } from 'lucide-react'
 import MainLayout from '@/layouts/MainLayout'
@@ -19,8 +20,57 @@ function Section({ label, icon: Icon, color, children }: { label: string; icon: 
 export default function IncidentDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { incidents, addNotification, analyzeIncident } = useApp()
+  const { incidents, setIncidents, addNotification, analyzeIncident } = useApp()
   const inc = incidents.find(i => i.id === id)
+
+  const [similarIncidents, setSimilarIncidents] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!id) return
+    const fetchSimilar = async () => {
+      try {
+        const url = localStorage.getItem('API_BASE_URL') || 'http://localhost:5000'
+        const res = await fetch(`${url}/similar/${id}`)
+        if (!res.ok) throw new Error('Failed to fetch similar incidents')
+        const data = await res.json()
+        const mapped = data.map((apiInc: any) => ({
+          id: apiInc.id,
+          service: apiInc.service,
+          error: apiInc.error,
+          similarity: Math.round(apiInc.similarity * 100),
+          resolvedAt: apiInc.created_at || new Date().toISOString()
+        }))
+        setSimilarIncidents(mapped)
+      } catch (err: any) {
+        console.error('Failed to load similar incidents:', err)
+      }
+    }
+    fetchSimilar()
+  }, [id])
+
+  const handleFeedback = async (useful: boolean) => {
+    if (!id) return
+    try {
+      const url = localStorage.getItem('API_BASE_URL') || 'http://localhost:5000'
+      const res = await fetch(`${url}/feedback/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useful })
+      })
+      if (!res.ok) throw new Error('Feedback submission failed')
+      const result = await res.json()
+      
+      // Update local state
+      if (inc) {
+        inc.confidence = result.confidence
+        setIncidents([...incidents])
+      }
+      addNotification('success', `Feedback recorded — confidence updated to ${result.confidence}%`)
+    } catch (err: any) {
+      console.error(err)
+      addNotification('error', `Failed to submit feedback: ${err.message}`)
+    }
+  }
 
   if (!inc) return (
     <MainLayout title="Incident Not Found">
@@ -46,7 +96,7 @@ export default function IncidentDetails() {
           </button>
           <div className="flex gap-2">
             <button
-              onClick={() => { addNotification('success', `Feedback recorded — confidence updated for ${inc.id}`); }}
+              onClick={() => handleFeedback(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-[1.02]"
               style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', color: '#34d399' }}
             >
@@ -54,7 +104,7 @@ export default function IncidentDetails() {
               Useful
             </button>
             <button
-              onClick={() => addNotification('info', 'Feedback recorded — AI will refine future recommendations')}
+              onClick={() => handleFeedback(false)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:scale-[1.02]"
               style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)', color: '#f87171' }}
             >
@@ -98,10 +148,10 @@ export default function IncidentDetails() {
               <p className="text-sm leading-relaxed" style={{ color: 'rgba(148,163,184,0.85)' }}>{inc.rootCause}</p>
             </Section>
 
-            {inc.similarIncidents && inc.similarIncidents.length > 0 && (
+            {similarIncidents && similarIncidents.length > 0 && (
               <Section label="Similar Incidents Retrieved from Memory" icon={GitBranch} color="#06b6d4">
                 <div className="space-y-3">
-                  {inc.similarIncidents.map(sim => (
+                  {similarIncidents.map(sim => (
                     <div key={sim.id} className="flex items-center gap-4 p-3 rounded-lg" style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)' }}>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
@@ -162,7 +212,7 @@ export default function IncidentDetails() {
                 { label: 'Service', value: inc.service },
                 { label: 'Severity', value: inc.severity.toUpperCase() },
                 { label: 'Status', value: inc.status },
-                { label: 'Memories Retrieved', value: inc.similarIncidents?.length ?? 0 },
+                { label: 'Memories Retrieved', value: similarIncidents?.length ?? 0 },
                 { label: 'Created', value: new Date(inc.createdAt).toLocaleString() },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between">
@@ -179,7 +229,7 @@ export default function IncidentDetails() {
               </p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => addNotification('success', 'Feedback stored in CockroachDB — confidence updated')}
+                  onClick={() => handleFeedback(true)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium transition-all hover:scale-[1.02]"
                   style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}
                 >
@@ -187,7 +237,7 @@ export default function IncidentDetails() {
                   Useful
                 </button>
                 <button
-                  onClick={() => addNotification('info', 'Feedback recorded')}
+                  onClick={() => handleFeedback(false)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium"
                   style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.2)', color: '#f87171' }}
                 >
